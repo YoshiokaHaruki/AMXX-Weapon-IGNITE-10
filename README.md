@@ -10,7 +10,7 @@ About this weapon: [Link](https://cso.fandom.com/wiki/IGNITE-10)
 ---
 ### Requirements
 ReAPI version:
-- ReHLDS, ReGameDLL, Metamod-R (or Metamod-P), AMX Mod X, ReAPI.
+- ReHLDS, ReGameDLL, Metamod-R (or Metamod-P), AMX Mod X (≥ 1.8.2), ReAPI.
 
 Non-ReAPI version:
 - HLDS (> 6153), Metamod (or Metamod-P), AMX Mod X (≥ 1.8.2)
