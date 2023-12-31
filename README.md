@@ -13,7 +13,7 @@ ReAPI version:
 - ReHLDS, ReGameDLL, Metamod-R (or Metamod-P), AMX Mod X, ReAPI.
 
 Non-ReAPI version:
-- HLDS, Metamod (or Metamod-P), AMX Mod X
+- HLDS (> 6153), Metamod (or Metamod-P), AMX Mod X (≥ 1.8.2)
 
 ❗ Tip: Recommend using the latest versions.
 
