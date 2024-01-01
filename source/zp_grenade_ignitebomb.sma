@@ -1,5 +1,14 @@
+/**
+ * Weapon by xUnicorn (t3rkecorejz) 
+ *
+ * Thanks a lot:
+ *
+ * Chrescoe1 & batcoh (Phenix) — First base code
+ * KORD_12.7 & wellasgood— I'm taken some functions from this authors
+ */
+
 new const PluginName[ ] =					"[ZP] Grenade: IGNITE-10";
-new const PluginVersion[ ] =				"1.0";
+new const PluginVersion[ ] =				"1.1";
 new const PluginAuthor[ ] =					"Yoshioka Haruki";
 
 /* ~ [ Includes ] ~ */
@@ -242,8 +251,13 @@ public plugin_init( )
 {
 	register_plugin( PluginName, PluginVersion, PluginAuthor );
 
+#if defined _reapi_included
+	/* -> ReGameDLL <- */
+	RegisterHookChain( RG_CBasePlayer_ThrowGrenade, "RG_CBasePlayer__ThrowGrenade_Post", true );
+#else
 	/* -> Fakemeta <- */
 	register_forward( FM_SetModel, "FM_Hook_SetModel_Post", true );
+#endif
 
 	/* -> HamSandwich: Weapon <- */
 	RegisterHam( Ham_Item_Holster, WeaponReference, "Ham_CWeapon_Holster_Post", true );
@@ -319,74 +333,68 @@ public zp_extra_item_selected( pPlayer, iItemId )
 	return CPlayer__GiveGrenade( pPlayer ) ? PLUGIN_CONTINUE : ZP_PLUGIN_HANDLED;
 }
 
-#if !defined _reapi_included && defined WeaponListDir
-	/* ~ [ Messages ] ~ */
-	public MsgHook_WeaponList( const iMsgId, const iMsgDest, const pReceiver )
+#if defined _reapi_included
+	/* ~ [ ReGameDLL ] ~ */
+	public RG_CBasePlayer__ThrowGrenade_Post( const pPlayer, const pInflictor )
 	{
-		// Method by KORD_12.7
-		if ( !pReceiver )
-		{
-			new szWeaponName[ MAX_NAME_LENGTH ];
-			get_msg_arg_string( 1, szWeaponName, charsmax( szWeaponName ) );
+		if ( is_nullent( pInflictor ) || !IsCustomWeapon( pInflictor, WeaponUnicalIndex ) )
+			return;
 
-			if ( !strcmp( szWeaponName, WeaponReference ) )
+		new pGrenade = GetHookChainReturn( ATYPE_INTEGER );
+		if ( is_nullent( pGrenade ) )
+			return;
+
+		CGrenade__UpdateProperties( pGrenade );
+	}
+#else
+	/* ~ [ Messages ] ~ */
+	#if defined WeaponListDir
+		public MsgHook_WeaponList( const iMsgId, const iMsgDest, const pReceiver )
+		{
+			// Method by KORD_12.7
+			if ( !pReceiver )
 			{
-				for ( new i, a = sizeof gl_aWeaponListData; i < a; i++ )
-					gl_aWeaponListData[ i ] = get_msg_arg_int( i + 2 );
+				new szWeaponName[ MAX_NAME_LENGTH ];
+				get_msg_arg_string( 1, szWeaponName, charsmax( szWeaponName ) );
+
+				if ( !strcmp( szWeaponName, WeaponReference ) )
+				{
+					for ( new i, a = sizeof gl_aWeaponListData; i < a; i++ )
+						gl_aWeaponListData[ i ] = get_msg_arg_int( i + 2 );
+				}
 			}
 		}
-	}
-#endif
+	#endif
 
-/* ~ [ Fakemeta ] ~ */
-#if !defined _reapi_included && defined WeaponListDir
-	public FM_Hook_RegUserMsg_Post( const szName[ ] )
+	/* ~ [ Fakemeta ] ~ */
+	#if defined WeaponListDir
+		public FM_Hook_RegUserMsg_Post( const szName[ ] )
+		{
+			// Method by wellasgood
+			if ( strcmp( szName, "WeaponList" ) == 0 )
+				gl_iMsgHook_WeaponList = register_message( get_orig_retval( ), "MsgHook_WeaponList" );
+		}
+	#endif
+
+	public FM_Hook_SetModel_Post( const pEntity, const szModel[ ] )
 	{
-		// Method by wellasgood
-		if ( strcmp( szName, "WeaponList" ) == 0 )
-			gl_iMsgHook_WeaponList = register_message( get_orig_retval( ), "MsgHook_WeaponList" );
+		if ( is_nullent( pEntity ) )
+			return;
+
+		if ( !FClassnameIs( pEntity, "grenade" ) )
+			return;
+
+		new pOwner = get_entvar( pEntity, var_owner );
+		if ( !IsUserValid( pOwner ) )
+			return;
+
+		new pActiveItem = get_member( pOwner, m_pActiveItem );
+		if ( is_nullent( pActiveItem ) || !IsCustomWeapon( pActiveItem, WeaponUnicalIndex ) )
+			return;
+
+		CGrenade__UpdateProperties( pEntity );
 	}
 #endif
-
-public FM_Hook_SetModel_Post( const pEntity, const szModel[ ] )
-{
-	if ( is_nullent( pEntity ) )
-		return;
-
-	new pOwner = get_entvar( pEntity, var_owner );
-	if ( !IsUserValid( pOwner ) )
-		return;
-
-	if ( !IsGrenadeModel( szModel ) )
-		return;
-
-	new pActiveItem = get_member( pOwner, m_pActiveItem );
-	if ( is_nullent( pActiveItem ) || !IsCustomWeapon( pActiveItem, WeaponUnicalIndex ) )
-		return;
-
-#if defined GrenadeHasGlowEffect
-	UTIL_SetEntityRendering( pEntity, kRenderFxGlowShell, GlowEffectColor, kRenderNormal, GlowEffectThickness );
-#else
-	// Remove glow effect from ZP
-	UTIL_SetEntityRendering( pEntity );
-#endif
-
-	// Remove beam from ZP
-	UTIL_TE_KILLBEAM( MSG_BROADCAST, pEntity );
-
-#if defined GrenadeHasTrailEffect
-	UTIL_TE_BEAMFOLLOW( MSG_BROADCAST, pEntity, gl_iszModelIndex[ ModelIndex_BeamFollow ], TrailEffectLife, TrailEffectWidth, TrailEffectColor, TrailEffectBrightness );
-#endif
-
-	set_entvar( pEntity, var_impulse, WeaponUnicalIndex );
-	set_entvar( pEntity, var_flTimeStepSound, WeaponUnicalIndex ); // Remove grenade physics from ZP
-	set_entvar( pEntity, var_nextthink, get_gametime( ) + 5.0 );
-	set_entvar( pEntity, var_avelocity, Float: { 0.0, 350.0, 0.0 } ); // Rotate by verticale (w/o create new grenade entity)
-	set_entvar( pEntity, var_angles, NULL_VECTOR ); // Ignore src angles
-	set_entvar( pEntity, var_body, WeaponModelWorldBody );
-
-	engfunc( EngFunc_SetModel, pEntity, WeaponModelWorld );
-}
 
 /* ~ [ HamSandwich ] ~ */
 public Ham_CWeapon_Holster_Post( const pItem )
@@ -419,7 +427,7 @@ public Ham_CWeapon_Deploy_Post( const pItem )
 	set_entvar( pPlayer, var_viewmodel, WeaponModelView );
 	set_entvar( pPlayer, var_weaponmodel, WeaponModelPlayer );
 
-	UTIL_SendWeaponAnim( MSG_ONE, pPlayer, pItem, WeaponAnim_Draw );
+	UTIL_SendWeaponAnim( MSG_ONE, pPlayer, WeaponAnim_Draw );
 
 	set_member( pPlayer, m_flNextAttack, WeaponAnim_Draw_Time - 0.2 );
 	set_member( pItem, m_Weapon_flTimeWeaponIdle, WeaponAnim_Draw_Time );
@@ -524,7 +532,7 @@ public Ham_CWeapon_SecondaryAttack_Pre( const pItem )
 	UTIL_PlayerAnimation( pPlayer, szPlayerAnim );
 #endif
 
-	UTIL_SendWeaponAnim( MSG_ONE, pPlayer, pItem, WeaponAnim_BMode );
+	UTIL_SendWeaponAnim( MSG_ONE, pPlayer, WeaponAnim_BMode );
 
 	SetWeaponState( pItem, GetWeaponState( pItem )|WeaponState_BMode );
 
@@ -540,10 +548,7 @@ public Ham_CWeapon_SecondaryAttack_Pre( const pItem )
 
 public Ham_CGrenade_Think_Pre( const pGrenade )
 {
-	if ( is_nullent( pGrenade ) )
-		return HAM_IGNORED;
-
-	if ( !IsCustomWeapon( pGrenade, WeaponUnicalIndex ) )
+	if ( is_nullent( pGrenade ) || !IsCustomWeapon( pGrenade, WeaponUnicalIndex ) )
 		return HAM_IGNORED;
 
 	static pOwner; pOwner = get_entvar( pGrenade, var_owner );
@@ -562,10 +567,7 @@ public Ham_CGrenade_Think_Pre( const pGrenade )
 
 public Ham_CGrenade_Touch_Post( const pGrenade, const pTouch )
 {
-	if ( is_nullent( pGrenade ) )
-		return;
-
-	if ( !IsCustomWeapon( pGrenade, WeaponUnicalIndex ) )
+	if ( is_nullent( pGrenade ) || !IsCustomWeapon( pGrenade, WeaponUnicalIndex ) )
 		return;
 
 	set_entvar( pGrenade, var_nextthink, get_gametime( ) );
@@ -644,6 +646,32 @@ public CGrenade__Explode( const pInflictor, const pPlayer, const Vector3( vecOri
 	}
 }
 
+public CGrenade__UpdateProperties( const pGrenade )
+{
+#if defined GrenadeHasGlowEffect
+	UTIL_SetEntityRendering( pGrenade, kRenderFxGlowShell, GlowEffectColor, kRenderNormal, GlowEffectThickness );
+#else
+	// Remove glow effect from ZP
+	UTIL_SetEntityRendering( pGrenade );
+#endif
+
+	// Remove beam from ZP
+	UTIL_TE_KILLBEAM( MSG_BROADCAST, pGrenade );
+
+#if defined GrenadeHasTrailEffect
+	UTIL_TE_BEAMFOLLOW( MSG_BROADCAST, pGrenade, gl_iszModelIndex[ ModelIndex_BeamFollow ], TrailEffectLife, TrailEffectWidth, TrailEffectColor, TrailEffectBrightness );
+#endif
+
+	set_entvar( pGrenade, var_impulse, WeaponUnicalIndex );
+	set_entvar( pGrenade, var_flTimeStepSound, WeaponUnicalIndex ); // Remove grenade physics from ZP
+	set_entvar( pGrenade, var_nextthink, get_gametime( ) + 5.0 );
+	set_entvar( pGrenade, var_avelocity, Float: { 0.0, 350.0, 0.0 } ); // Rotate by verticale (w/o create new grenade entity)
+	set_entvar( pGrenade, var_angles, NULL_VECTOR ); // Ignore src angles
+	set_entvar( pGrenade, var_body, WeaponModelWorldBody );
+
+	engfunc( EngFunc_SetModel, pGrenade, WeaponModelWorld );
+}
+
 public CEffect__SpawnEntity( const pPlayer )
 {
 	new pEntity = rg_create_entity( EntityEffectReference );
@@ -698,58 +726,15 @@ public CEffect__Think( const pEntity )
 }
 
 /* ~ [ Stocks ] ~ */
-stock bool: IsGrenadeModel( const szModel[ ] )
-{
-	static const DefaultNadeModels[ ][ ] = {
-		"w_hegrenade.mdl", "w_flashbang.mdl", "w_smokegrenade.mdl"
-	};
-
-	/**
-	 * I know it looks like a 💩, but there is no other way in FM_SetModel 🤡
-	 */
-	for ( new i; i < 3; i++ )
-	{
-		if ( containi( szModel, DefaultNadeModels[ i ] ) != -1 )
-			return true;
-	}
-
-	return false;
-}
-
 /* -> Weapon Animation <- */
-stock UTIL_SendWeaponAnim( const iDest, const pReceiver, const pItem, const iAnim ) 
+stock UTIL_SendWeaponAnim( const iDest, const pReceiver, const iAnim ) 
 {
-	static iBody; iBody = get_entvar( pItem, var_body );
 	set_entvar( pReceiver, var_weaponanim, iAnim );
 
 	message_begin( iDest, SVC_WEAPONANIM, .player = pReceiver );
 	write_byte( iAnim );
-	write_byte( iBody );
+	write_byte( 0 );
 	message_end( );
-
-	if ( get_entvar( pReceiver, var_iuser1 ) )
-		return;
-
-	static i, iCount, pSpectator, aSpectators[ MAX_PLAYERS ];
-	get_players( aSpectators, iCount, "bch" );
-
-	for ( i = 0; i < iCount; i++ )
-	{
-		pSpectator = aSpectators[ i ];
-
-		if ( get_entvar( pSpectator, var_iuser1 ) != OBS_IN_EYE )
-			continue;
-
-		if ( get_entvar( pSpectator, var_iuser2 ) != pReceiver )
-			continue;
-
-		set_entvar( pSpectator, var_weaponanim, iAnim );
-
-		message_begin( iDest, SVC_WEAPONANIM, .player = pSpectator );
-		write_byte( iAnim );
-		write_byte( iBody );
-		message_end( );
-	}
 }
 
 #if defined PrecacheSoundsFromModel
